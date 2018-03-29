@@ -1,0 +1,202 @@
+<style>
+img {
+	max-width: 50%;
+}
+</style>
+<form id="form1" runat="server">
+	<input type='file' id="imgInp" />
+	<img id="blah" src="#" alt="your image" style="display:none"/>
+	<canvas id="c"></canvas>
+</form>
+<button data-type="labels" disabled="true">Labels</button>
+<button data-type="faces" disabled="true">Faces</button>
+<table id="myTable">
+<thead>
+</thead>
+<tbody>
+</tbody>
+</table>
+<script
+			  src="https://code.jquery.com/jquery-1.12.4.min.js"
+			  integrity="sha256-ZosEbRLbNQzLpnKIkEdrPv7lOy9C27hHQ+Xp8a4MxAQ="
+			  crossorigin="anonymous"></script>
+<script>
+	var apiKey = ""; //add own google vision API key.
+	var b64image = "";
+	var canvas = document.getElementById("c");
+	var ctx = canvas.getContext("2d");
+	function readImg(input) {
+		if (input.files && input.files[0]) {
+			var reader = new FileReader();
+			
+			reader.onload = function (e) {
+				var image = new Image();
+				image.onload = function() {
+					$('#blah').attr('src', e.target.result);
+					var canvasWidth = window.innerWidth/2;
+					var canvasHeight = canvasWidth*$('#blah').height()/$('#blah').width();
+					canvas.width = canvasWidth;
+					canvas.height = canvasHeight;
+					ctx.drawImage(image, 0, 0, canvasWidth, canvasHeight);
+				};
+				image.src = e.target.result
+				b64image = e.target.result;
+				b64image = b64image.slice(23);
+			}
+			reader.readAsDataURL(input.files[0]);
+		}
+	}
+	
+	$("#imgInp").change(function(){
+		$("button").prop("disabled",false);
+		readImg(this);
+	});
+	$("button").click(function() {
+		$('#myTable > thead').empty();
+		$('#myTable > tbody').empty();
+		if($(this).data("type") == "labels") {
+			getLabels(b64image);
+		}
+		if($(this).data("type") == "faces") {
+			getFaces(b64image);
+		}
+	});
+	function getLabels(image) {
+		var data = {
+		  "requests":[
+			{
+			  "image":{
+				"content":image
+			  },
+			  "features":[
+				{
+				  "type":"LABEL_DETECTION",
+				  "maxResults":5
+				}
+			  ]
+			}
+		  ]
+		}
+		$.ajax({
+			type: "POST",
+			url: "https://vision.googleapis.com/v1/images:annotate?key=" + apiKey,
+			data: JSON.stringify(data),
+			contentType: "application/json",
+			success: successLabels,
+			error: errorFunction
+		});
+	}
+	function successLabels(result) {
+		$.each(result.responses[0].labelAnnotations, function(index, value) {
+			$('#myTable > tbody').append(
+				'<tr><td>'
+				+ value.description
+				+ '</td><td>'
+				+ value.score +
+				'</td></tr>'
+			);
+		});
+		console.log(result);
+	}
+	function getFaces(image) {
+		var data = {
+		  "requests":[
+			{
+			  "image":{
+				"content":image
+			  },
+			  "features":[
+				{
+				  "type":"FACE_DETECTION"
+				}
+			  ]
+			}
+		  ]
+		}
+		$.ajax({
+			type: "POST",
+			url: "https://vision.googleapis.com/v1/images:annotate?key=" + apiKey,
+			data: JSON.stringify(data),
+			contentType: "application/json",
+			success: successFaces,
+			error: errorFunction
+		});
+	}
+	function successFaces(result) {
+		ctx.strokeStyle = 'rgba(255,255,0,0.8)';
+		ctx.lineWidth = '2';
+		ctx.font = "30px Arial";
+		ctx.fillStyle = "rgba(255,255,0,0.8)";
+
+		$('#myTable > thead').append(
+			'<tr><th>#</th><th>Confidence</th><th>Joy</th><th>Sorrow</th><th>Anger</th><th>Surprise</th><th>Headweare</th></tr>'
+		);
+		$.each(result.responses[0].faceAnnotations, function(index, value) {
+			var hr = canvas.height/$('#blah').height();
+			var wr = canvas.width/$('#blah').width();
+			var x1 = value.fdBoundingPoly.vertices[0].x * wr;
+			var y1 = value.fdBoundingPoly.vertices[0].y * hr;
+			var x2 = (value.fdBoundingPoly.vertices[2].x * wr)-x1;
+			var y2 = (value.fdBoundingPoly.vertices[2].y * hr)-y1;
+			var number = index+1;
+			ctx.fillText(number,x1-30,y1);
+			ctx.rect(x1,y1,x2,y2);
+			ctx.stroke();
+			
+			$('#myTable > tbody').append(
+				'<tr><td>'
+				+ number
+				+ '</td><td>'
+				+ value.detectionConfidence
+				+ '</td><td>'
+				+ value.joyLikelihood
+				+ '</td><td>'
+				+ value.sorrowLikelihood
+				+ '</td><td>'
+				+ value.angerLikelihood
+				+ '</td><td>'
+				+ value.surpriseLikelihood
+				+ '</td><td>'
+				+ value.headwearLikelihood +
+				'</td></tr>'
+			);
+		});
+		/*var faces = result.responses[0].faceAnnotations;
+		ctx.strokeStyle = 'rgba(0,255,0,0.8)';
+		ctx.lineWidth = '5';
+		faces.forEach(face => {
+		  ctx.beginPath();
+		  let origX = 0;
+		  let origY = 0;
+		  face.boundingPoly.vertices.forEach((bounds, i) => {
+			if (i === 0) {
+			  origX = bounds.x;
+			  origY = bounds.y;
+			}
+			ctx.lineTo(bounds.x, bounds.y);
+		  });
+		  ctx.lineTo(origX, origY);
+		  ctx.stroke();
+		});*/
+		/*ctx.strokeStyle = 'rgba(255,255,0,0.8)';
+		faces.forEach(face => {
+		  ctx.beginPath();
+		  let origX = 0;
+		  let origY = 0;
+		  face.fdBoundingPoly.vertices.forEach((bounds, i) => {
+			if (i === 0) {
+			  origX = bounds.x;
+			  origY = bounds.y;
+			}
+			ctx.lineTo(bounds.x, bounds.y);
+		  });
+		  ctx.lineTo(origX, origY);
+		  ctx.stroke();
+		});*/
+
+		console.log(result);
+	}
+	function errorFunction(error) {
+		console.log(error);
+	}
+</script>
